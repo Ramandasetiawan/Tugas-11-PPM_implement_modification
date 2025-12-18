@@ -1,67 +1,63 @@
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    Button,
-    FlatList,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Button,
+  FlatList,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
 import {
-    Todo,
-    addTodo,
-    deleteTodo,
-    getTodos,
-    initDB,
-    updateTodo,
+  Todo,
+  addTodo,
+  deleteTodo,
+  getTodos,
+  getTodosByStatus,
+  initDB,
+  updateTodo,
 } from "../services/todoService";
 
 export default function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [text, setText] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [filter, setFilter] = useState<"all" | "done" | "undone">("all");
 
   useEffect(() => {
     (async () => {
-      try {
-        await initDB();
-        await reload();
-      } catch (e) {
-        console.error(e);
-      }
+      await initDB();
+      await reload();
     })();
   }, []);
 
   async function reload() {
-    const data = await getTodos();
-    setTodos(data);
+    if (filter === "all") {
+      setTodos(await getTodos());
+    } else {
+      setTodos(await getTodosByStatus(filter));
+    }
   }
 
   async function handleAddOrUpdate() {
     if (!text.trim()) return;
-    try {
-      if (editingId) {
-        await updateTodo(editingId, { text: text.trim() });
-        setEditingId(null);
-      } else {
-        await addTodo(text.trim());
-      }
-      setText("");
-      await reload();
-    } catch (e) {
-      console.error(e);
+
+    if (editingId) {
+      await updateTodo(editingId, { text: text.trim() });
+      setEditingId(null);
+    } else {
+      await addTodo(text.trim());
     }
+
+    setText("");
+    reload();
   }
 
   async function handleToggle(item: Todo) {
-    try {
-      await updateTodo(item.id!, { done: item.done ? 0 : 1 });
-      await reload();
-    } catch (e) {
-      console.error(e);
-    }
+    await updateTodo(item.id!, { done: item.done === 1 ? 0 : 1 });
+    reload();
   }
 
   function startEdit(item: Todo) {
@@ -76,12 +72,8 @@ export default function TodoList() {
         text: "Hapus",
         style: "destructive",
         onPress: async () => {
-          try {
-            await deleteTodo(item.id!);
-            await reload();
-          } catch (e) {
-            console.error(e);
-          }
+          await deleteTodo(item.id!);
+          reload();
         },
       },
     ]);
@@ -90,19 +82,37 @@ export default function TodoList() {
   function renderItem({ item }: { item: Todo }) {
     return (
       <View style={styles.itemRow}>
-        <TouchableOpacity onPress={() => handleToggle(item)} style={{ flex: 1 }}>
-          <Text style={[styles.itemText, item.done ? styles.doneText : null]}>{item.text}</Text>
+        <TouchableOpacity style={{ flex: 1 }} onPress={() => handleToggle(item)}>
+          <Text style={[styles.itemText, item.done === 1 && styles.doneText]}>
+            {item.text}
+          </Text>
+
+          {item.done === 1 && item.finished_at && (
+            <Text style={styles.timeText}>
+              Selesai: {item.finished_at}
+            </Text>
+          )}
         </TouchableOpacity>
+
         <Button title="Edit" onPress={() => startEdit(item)} />
-        <View style={{ width: 8 }} />
-        <Button color="#d9534f" title="Del" onPress={() => confirmDelete(item)} />
+        <View style={{ width: 6 }} />
+        <Button title="Del" color="#d9534f" onPress={() => confirmDelete(item)} />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Todo (SQLite)</Text>
+      <Text style={styles.title}>Todo SQLite</Text>
+
+      {/* FILTER */}
+      <View style={styles.filterRow}>
+        <Button title="All" onPress={() => { setFilter("all"); reload(); }} />
+        <Button title="Done" onPress={() => { setFilter("done"); reload(); }} />
+        <Button title="Undone" onPress={() => { setFilter("undone"); reload(); }} />
+      </View>
+
+      {/* INPUT */}
       <View style={styles.inputRow}>
         <TextInput
           placeholder="Tulis todo..."
@@ -110,14 +120,19 @@ export default function TodoList() {
           onChangeText={setText}
           style={styles.input}
         />
-        <Button title={editingId ? "Simpan" : "Tambah"} onPress={handleAddOrUpdate} />
+        <Button
+          title={editingId ? "Simpan" : "Tambah"}
+          onPress={handleAddOrUpdate}
+        />
       </View>
 
       <FlatList
         data={todos}
         keyExtractor={(i) => String(i.id)}
         renderItem={renderItem}
-        ListEmptyComponent={() => <Text style={{ textAlign: "center" }}>Belum ada todo.</Text>}
+        ListEmptyComponent={
+          <Text style={{ textAlign: "center" }}>Belum ada todo</Text>
+        }
       />
     </View>
   );
@@ -126,9 +141,25 @@ export default function TodoList() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   title: { fontSize: 20, fontWeight: "600", marginBottom: 12 },
-  inputRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  input: { flex: 1, borderWidth: 1, borderColor: "#ddd", padding: 8, marginRight: 8, borderRadius: 6 },
-  itemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8 },
+  filterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  inputRow: { flexDirection: "row", marginBottom: 12 },
+  input: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    padding: 8,
+    marginRight: 8,
+  },
+  itemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
   itemText: { fontSize: 16 },
-  doneText: { textDecorationLine: "line-through", color: "#999" },
+  doneText: { textDecorationLine: "line-through", color: "#888" },
+  timeText: { fontSize: 12, color: "#666" },
 });

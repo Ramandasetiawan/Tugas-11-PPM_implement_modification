@@ -12,8 +12,9 @@ async function getDB() {
 export type Todo = {
   id?: number;
   text: string;
-  done: number;       
+  done: number;                 // 0 = Undone, 1 = Done
   created_at?: string;
+  finished_at?: string | null;
 };
 
 /** Create table */
@@ -25,7 +26,8 @@ export async function initDB(): Promise<void> {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       text TEXT NOT NULL,
       done INTEGER NOT NULL DEFAULT 0,
-      created_at DATETIME DEFAULT (datetime('now'))
+      created_at DATETIME DEFAULT (datetime('now')),
+      finished_at DATETIME
     );
   `);
 }
@@ -33,8 +35,22 @@ export async function initDB(): Promise<void> {
 /** Get all todos */
 export async function getTodos(): Promise<Todo[]> {
   const db = await getDB();
-  const rows = await db.getAllAsync<Todo>("SELECT * FROM todos ORDER BY id DESC;");
-  return rows;
+  return await db.getAllAsync<Todo>(
+    "SELECT * FROM todos ORDER BY id DESC;"
+  );
+}
+
+/** Get todos by status */
+export async function getTodosByStatus(
+  status: "done" | "undone"
+): Promise<Todo[]> {
+  const db = await getDB();
+  const doneValue = status === "done" ? 1 : 0;
+
+  return await db.getAllAsync<Todo>(
+    "SELECT * FROM todos WHERE done = ? ORDER BY id DESC;",
+    [doneValue]
+  );
 }
 
 /** Insert todo */
@@ -67,6 +83,13 @@ export async function updateTodo(
   if (fields.done !== undefined) {
     sets.push("done = ?");
     params.push(fields.done);
+
+    // realtime finished_at
+    if (fields.done === 1) {
+      sets.push("finished_at = datetime('now')");
+    } else {
+      sets.push("finished_at = NULL");
+    }
   }
 
   if (sets.length === 0) return;
@@ -88,6 +111,7 @@ export async function deleteTodo(id: number): Promise<void> {
 export default {
   initDB,
   getTodos,
+  getTodosByStatus,
   addTodo,
   updateTodo,
   deleteTodo,
